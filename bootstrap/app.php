@@ -9,7 +9,6 @@ use Illuminate\Foundation\Configuration\Middleware;
 use Laravel\Passport\Http\Middleware\CheckForAnyScope;
 
 return Application::configure(basePath: dirname(__DIR__))
-    ->withProviders()
     ->withRouting(
         web: __DIR__ . '/../routes/web.php',
         api: __DIR__ . '/../routes/api.php',

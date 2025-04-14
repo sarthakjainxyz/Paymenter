@@ -114,6 +114,18 @@ class Convoy extends Server
                 'required' => false,
             ],
             [
+                'name' => 'ipv4',
+                'type' => 'number',
+                'label' => 'Amount of IPv4 addresses',
+                'required' => false,
+            ],
+            [
+                'name' => 'ipv6',
+                'type' => 'number',
+                'label' => 'Amount of IPv6 addresses',
+                'required' => false,
+            ],
+            [
                 'name' => 'start_on_create',
                 'type' => 'checkbox',
                 'label' => 'Start Server After Completing Installation',
@@ -160,7 +172,7 @@ class Convoy extends Server
     public function testConfig(): bool|string
     {
         try {
-            $this->request('/servers');
+            $this->request('servers');
 
             return true;
         } catch (\Exception $e) {
@@ -168,6 +180,17 @@ class Convoy extends Server
         }
 
         return true;
+    }
+
+    // Convoy is reallyy strict (The account password must contain 8 - 50 characters, 1 uppercase, 1 lowercase, 1 number and 1 special character.)
+    private function createPassword()
+    {
+        $password = Str::password();
+        while (!preg_match('/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,50}$/', $password)) {
+            $password = Str::password();
+        }
+
+        return $password;
     }
 
     public function getOrCreateUser($user)
@@ -181,7 +204,7 @@ class Convoy extends Server
             ];
         }
 
-        $password = Str::password();
+        $password = $this->createPassword();
         $user = $this->request('users', 'post', [
             'email' => $user->email,
             'name' => $user->name,
@@ -208,19 +231,24 @@ class Convoy extends Server
         $node = $properties['node'] ?? $settings['node'];
         $os = $properties['os'];
         $hostname = $properties['hostname'];
-        $password = $properties['password'] ?? Str::password();
+        $password = $properties['password'] ?? $this->createPassword();
         $cpu = $properties['cpu'] ?? $settings['cpu'];
         $ram = $properties['ram'] ?? $settings['ram'];
         $disk = $properties['disk'] ?? $settings['disk'];
         $bandwidth = $properties['bandwidth'] ?? $settings['bandwidth'];
         $snapshot = $properties['snapshot'] ?? $settings['snapshot'];
         $backups = $properties['backups'] ?? $settings['backups'];
-        if ($settings['auto_assign_ip']) {
-            $ip = $this->request('nodes/' . $node . '/addresses', data: ['filter[server_id]' => '']);
+        $ipv4 = $properties['ipv4'] ?? $settings['ipv4'];
+        $ipv6 = $properties['ipv6'] ?? $settings['ipv6'];
 
-            $ip = [$ip['data'][0]['id']];
-        } else {
-            $ip = [];
+        $ips = [];
+        if ($ipv4 > 0) {
+            $ip = $this->request('nodes/' . $node . '/addresses', data: ['filter[server_id]' => '', 'filter[type]' => 'ipv4', 'per_page' => $ipv4]);
+            $ips = array_merge($ips, array_column($ip['data'], 'id'));
+        }
+        if ($ipv6 > 0) {
+            $ip = $this->request('nodes/' . $node . '/addresses', data: ['filter[server_id]' => '', 'filter[type]' => 'ipv6', 'per_page' => $ipv6]);
+            $ips = array_merge($ips, array_column($ip['data'], 'id'));
         }
 
         $user = $this->getOrCreateUser($service->order->user);
@@ -238,7 +266,7 @@ class Convoy extends Server
                 'snapshots' => (int) $snapshot,
                 'bandwidth' => (int) $bandwidth == 0 ? null : (int) $bandwidth * 1024 * 1024,
                 'backups' => (int) $backups == 0 ? null : (int) $backups,
-                'address_ids' => $ip,
+                'address_ids' => $ips,
             ],
             'account_password' => $password,
             'template_uuid' => $os,
@@ -315,5 +343,23 @@ class Convoy extends Server
 
         // Remove the server_uuid property
         $service->properties()->where('key', 'server_uuid')->delete();
+    }
+
+    public function getActions(Service $service): array
+    {
+        return [
+            [
+                'type' => 'button',
+                'label' => 'Go to Server',
+                'function' => 'ssoLink',
+            ],
+        ];
+    }
+
+    public function ssoLink(Service $service): string
+    {
+        $data = $this->request('users/' . $this->getOrCreateUser($service->order->user)['id'] . '/generate-sso-token', 'post');
+
+        return rtrim($this->config('host'), '/') . '/authenticate?token=' . $data['data']['token'];
     }
 }

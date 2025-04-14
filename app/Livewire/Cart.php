@@ -161,6 +161,9 @@ class Cart extends Component
         if (!Auth::check()) {
             return redirect()->route('login');
         }
+        if (config('settings.mail_must_verify') && !Auth::user()->hasVerifiedEmail()) {
+            return redirect()->route('verification.notice');
+        }
 
         // Start database transaction
         DB::beginTransaction();
@@ -175,7 +178,7 @@ class Cart extends Component
                 ) {
                     throw new DisplayException(__('product.user_limit', ['product' => $item->product->name]));
                 }
-                if ($item->product->stock) {
+                if ($item->product->stock !== null) {
                     if ($item->product->stock < $item->quantity) {
                         throw new DisplayException(__('product.out_of_stock', ['product' => $item->product->name]));
                     }
@@ -279,9 +282,9 @@ class Cart extends Component
                         ExtensionHelper::addPayment($invoice->id, null, amount: $this->total->price);
                     } else {
                         $this->total->price -= $credit->amount;
+                        ExtensionHelper::addPayment($invoice->id, null, amount: $credit->amount);
                         $credit->amount = 0;
                         $credit->save();
-                        ExtensionHelper::addPayment($invoice->id, null, amount: $credit->amount);
                     }
                 }
             }
@@ -304,6 +307,14 @@ class Cart extends Component
 
                 return $this->redirect(route('services'), true);
             } else {
+                $invoice = $invoice->fresh();
+                if ($this->gateway && $invoice->remaining > 0) {
+                    $pay = ExtensionHelper::pay(Gateway::where('id', $this->gateway)->first(), $invoice);
+                    if (is_string($pay)) {
+                        return $this->redirect($pay);
+                    }
+                }
+
                 return $this->redirect(route('invoices.show', $invoice) . '?gateway=' . $this->gateway . '&pay', true);
             }
         } catch (\Exception $e) {
@@ -313,7 +324,7 @@ class Cart extends Component
             // Is it a real error or a validation error?
             // If it's a validation error, you can use the $this->addError() method to display the error message to the user.
             if ($e instanceof DisplayException) {
-                $this->notify($e->getMessage(), 'error');
+                return $this->notify($e->getMessage(), 'error');
             } else {
                 Log::error($e);
                 $this->notify('An error occurred while processing your order. Please try again later.');

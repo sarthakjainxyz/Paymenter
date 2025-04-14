@@ -10,6 +10,7 @@ use App\Models\Service;
 use App\Models\ServiceUpgrade;
 use App\Models\Ticket;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Http;
 
 class CronJob extends Command
 {
@@ -36,7 +37,7 @@ class CronJob extends Command
         $sendedInvoices = 0;
         Service::where('status', 'active')->where('expires_at', '<', now()->addDays((int) config('settings.cronjob_invoice')))->get()->each(function ($service) use (&$sendedInvoices) {
             // Does the service have already a pending invoice?
-            if ($service->invoices()->where('status', 'pending')->exists()) {
+            if ($service->invoices()->where('status', 'pending')->exists() || $service->cancellation()->exists()) {
                 return;
             }
 
@@ -117,17 +118,20 @@ class CronJob extends Command
 
         // Terminate orders if due date is overdue for x days
         $ordersTerminated = 0;
-        Service::where('status', 'suspended')->where('expires_at', '<', now()->subDays((int) config('settings.cronjobb_order_terminate')))->each(function ($service) use (&$ordersTerminated) {
+        Service::where('status', 'suspended')->where('expires_at', '<', now()->subDays((int) config('settings.cronjob_order_terminate')))->each(function ($service) use (&$ordersTerminated) {
             TerminateJob::dispatch($service);
             $service->update(['status' => 'cancelled']);
+            // Cancel outstanding invoices
+            $service->invoices()->where('status', 'pending')->update(['status' => 'cancelled']);
             $ordersTerminated++;
         });
-        $this->info('Terminating orders if due date is overdue for ' . config('settings.cronjobb_order_terminate') . ' days: ' . $ordersTerminated . ' orders');
+        $this->info('Terminating orders if due date is overdue for ' . config('settings.cronjob_order_terminate') . ' days: ' . $ordersTerminated . ' orders');
 
         // Close tickets if no response for x days
         $ticketClosed = 0;
         Ticket::where('status', 'replied')->each(function ($ticket) use (&$ticketClosed) {
-            if ($ticket->messages()->where('user_id', '!=', $ticket->user_id)->where('created_at', '<', now()->subDays((int) config('settings.cronjob_close_ticket')))->exists()) {
+            $lastMessage = $ticket->messages()->latest('created_at')->first();
+            if ($lastMessage && $lastMessage->created_at < now()->subDays((int) config('settings.cronjob_close_ticket'))) {
                 $ticket->update(['status' => 'closed']);
                 $ticketClosed++;
             }
@@ -137,5 +141,30 @@ class CronJob extends Command
         // Delete email logs older then x
         $this->info('Deleting email logs older then ' . config('settings.cronjob_delete_email_logs') . ' days: ' . EmailLog::where('created_at', '<', now()->subDays((int) config('settings.cronjob_delete_email_logs')))->count());
         EmailLog::where('created_at', '<', now()->subDays((int) config('settings.cronjob_delete_email_logs')))->delete();
+
+        // Check for updates
+        $this->info('Checking for updates...');
+
+        if (config('app.version') == 'development') {
+            $this->info('You are using the development version. No update check available.');
+
+            return;
+        } elseif (config('app.version') == 'beta') {
+            // Check if app.commit is different from the latest commit
+            $latestCommit = Http::get('https://api.github.com/repos/Paymenter/Paymenter/commits')->json()[0]['sha'];
+            if (config('app.commit') != $latestCommit) {
+                $this->info('A new version is available: ' . config('app.commit'));
+            } else {
+                $this->info('You are using the latest version: ' . config('app.commit'));
+            }
+        } else {
+            // Check if app.version is different from the latest version
+            $latestVersion = Http::get('https://api.github.com/repos/Paymenter/Paymenter/releases/latest')->json()['tag_name'];
+            if (config('app.version') != $latestVersion) {
+                $this->info('A new version is available: ' . $latestVersion);
+            } else {
+                $this->info('You are using the latest version: ' . config('app.version'));
+            }
+        }
     }
 }

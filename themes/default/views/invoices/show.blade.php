@@ -6,7 +6,7 @@
             </div>
             <x-slot name="closeTrigger">
                 <div class="flex gap-4">
-                    Amount: {{ $invoice->formattedTotal }}
+                    Amount: {{ $invoice->formattedRemaining }}
                     <button wire:confirm="Are you sure?" wire:click="exitPay" @click="open = false"
                         class="text-primary-100">
                         <x-ri-close-fill class="size-6" />
@@ -65,6 +65,9 @@
                             </div>
                         @endif
                     </div>
+                    @if(Auth::user()->credits()->where('currency_code', $invoice->currency_code)->exists() && Auth::user()->credits()->where('currency_code', $invoice->currency_code)->first()->amount > 0)
+                        <x-form.checkbox wire:model="use_credits" name="use_credits" label="Use Credits" />
+                    @endif
                     @if(count($gateways) > 1)
                         <x-form.select wire:model.live="gateway" label="Payment Gateway" class="mt-4" name="gateway">
                             @foreach ($gateways as $gateway)

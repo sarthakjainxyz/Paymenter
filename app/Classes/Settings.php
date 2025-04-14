@@ -83,14 +83,12 @@ class Settings
                     'label' => 'Captcha Site Key',
                     'type' => 'text',
                     'required' => false,
-                    'default' => '0x4AAAAAAAC-bTN5KkqiyxNM',
                 ],
                 [
                     'name' => 'captcha_secret',
                     'label' => 'Captcha Secret',
                     'type' => 'text',
                     'required' => false,
-                    'default' => '0x4AAAAAAAC-baD1IX6FMxXxEduRXcmCtuM',
                 ],
 
                 [
@@ -355,14 +353,14 @@ class Settings
                     'name' => 'cronjob_order_suspend',
                     'label' => 'Suspend server if invoice is x days overdue',
                     'type' => 'number',
-                    'default' => 0,
+                    'default' => 2,
                     'required' => true,
                 ],
                 [
-                    'name' => 'cronjobb_order_terminate',
+                    'name' => 'cronjob_order_terminate',
                     'label' => 'Delete server if invoice is x days overdue (also cancels the invoice)',
                     'type' => 'number',
-                    'default' => 7,
+                    'default' => 14,
                     'required' => true,
                 ],
                 [
@@ -415,6 +413,7 @@ class Settings
                     'label' => 'Theme',
                     'default' => 'default',
                     'type' => 'select',
+                    'required' => true,
                     // Read themes from themes directory
                     'options' => array_map('basename', glob(base_path('themes/*'), GLOB_ONLYDIR)),
                     'validation' => 'in:' . implode(',', array_map('basename', glob(base_path('themes/*'), GLOB_ONLYDIR))),
@@ -461,6 +460,13 @@ class Settings
                     'default' => 10,
                     'required' => true,
                     'description' => 'Number of items to show per page',
+                ],
+                [
+                    'name' => 'debug',
+                    'label' => 'Debug Mode',
+                    'type' => 'checkbox',
+                    'default' => false,
+                    'description' => 'Enable debug mode to log HTTP requests and display errors in the browser',
                 ],
             ],
         ];

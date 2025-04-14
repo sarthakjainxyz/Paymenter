@@ -7,7 +7,7 @@
 
         <div class="flex flex-row items-center justify-between h-14 px-4">
 
-            <div class="flex flex-row">
+            <div class="flex flex-row items-center">
                 <button @click="slideOverOpen=true" class="flex md:hidden w-10 h-10 items-center justify-center rounded-lg hover:bg-neutral transition">
                     <x-ri-menu-fill class="size-5" />
                 </button>
@@ -59,7 +59,7 @@
                     <x-dropdown>
                         <x-slot:trigger>
                             <div class="flex flex-col">
-                                <span class="text-sm text-base font-semibold text-nowrap">{{ strtoupper(app()->getLocale()) }} <span class="text-base/50 font-semibold">|</span> {{ session('currency', 'USD') }}</span>
+                                <span class="text-sm text-base font-semibold text-nowrap">{{ strtoupper(app()->getLocale()) }} <span class="text-base/50 font-semibold">|</span> {{ session('currency', config('settings.default_currency')) }}</span>
                             </div>
                         </x-slot:trigger>
                         <x-slot:content>
@@ -81,8 +81,8 @@
                     </x-slot:trigger>
                     <x-slot:content>
                         <div class="flex flex-col p-2">
-                            <span class="text-sm text-base text-nowrap">{{ auth()->user()->name }}</span>
-                            <span class="text-sm text-base text-nowrap">{{ auth()->user()->email }}</span>
+                            <span class="text-sm text-base break-words">{{ auth()->user()->name }}</span>
+                            <span class="text-sm text-base break-words">{{ auth()->user()->email }}</span>
                         </div>
                         @foreach (\App\Classes\Navigation::getAccountDropdownLinks() as $nav)
                         <x-navigation.link :href="route($nav['route'], $nav['params'] ?? null)" :spa="isset($nav['spa']) ? $nav['spa'] : true">

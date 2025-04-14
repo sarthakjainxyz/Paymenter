@@ -105,7 +105,7 @@ class Stripe extends Gateway
     public function pay($invoice, $total)
     {
         $eligableforSubscription = collect($invoice->items)->filter(function ($item) {
-            return $item->service && $item->service->plan->type !== 'one-time';
+            return $item->reference_type === Service::class && $item->reference->plan->type !== 'one-time';
         })->count() > 0;
         if ($this->config('stripe_use_subscriptions') && $eligableforSubscription) {
             $stripeCustomerId = $invoice->user->properties->where('key', 'stripe_id')->first();
@@ -234,10 +234,10 @@ class Stripe extends Gateway
 
         // Create subscription
         foreach ($invoice->items as $item) {
-            if (!$item->service) {
+            if (!$item->reference_type === Service::class) {
                 continue;
             }
-            $service = $item->service;
+            $service = $item->reference;
             $product = $service->product;
 
             // Check if the service->product already exists in Stripe

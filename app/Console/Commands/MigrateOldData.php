@@ -1137,6 +1137,11 @@ class MigrateOldData extends Command
                 }
                 if ($record['is_configurable_option'] === 1) {
                     $configOption = ConfigOption::whereId($record['key'])->first();
+                    if (!$configOption) {
+                        $this->warn("Config option not found for order_product_id: {$record['order_product_id']}, key: {$record['key']}");
+
+                        continue;
+                    }
                     if (in_array($configOption->type, ['text', 'number'])) {
                         $service_properties[] = [
                             'name' => $record['key'],
@@ -1299,7 +1304,7 @@ class MigrateOldData extends Command
                     'role_id' => $record['role_id'] === 1 ? 1 : null,
                     'email_verified_at' => $record['email_verified_at'],
                     'password' => $record['password'],
-                    'tfa_secret' => $record['tfa_secret'],
+                    'tfa_secret' => $record['tfa_secret'] ? Crypt::encryptString(Crypt::decrypt($record['tfa_secret'])) : null,
                     'created_at' => $record['created_at'],
                     'updated_at' => $record['updated_at'],
                     'remember_token' => $record['remember_token'],

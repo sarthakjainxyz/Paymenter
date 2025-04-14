@@ -65,12 +65,18 @@ class PayPal extends Gateway
         return once(function () {
             $url = $this->config('test_mode') ? 'https://api-m.sandbox.paypal.com' : 'https://api-m.paypal.com';
 
-            return Http::withHeaders([
+            $result = Http::withHeaders([
                 'Accept' => 'application/json',
                 'Authorization' => 'Basic ' . base64_encode($this->config('client_id') . ':' . $this->config('client_secret')),
             ])->asForm()->post($url . '/v1/oauth2/token', [
                 'grant_type' => 'client_credentials',
-            ])->object()->access_token;
+            ]);
+
+            if ($result->failed()) {
+                throw new \Exception('Failed to generate access token: ' . $result->body());
+            }
+
+            return $result->json()['access_token'];
         });
     }
 
@@ -85,8 +91,11 @@ class PayPal extends Gateway
     public function pay($invoice, $total)
     {
         $url = $this->config('test_mode') ? 'https://api-m.sandbox.paypal.com' : 'https://api-m.paypal.com';
+        $eligableforSubscription = collect($invoice->items)->filter(function ($item) {
+            return $item->reference_type === Service::class;
+        })->count() == $invoice->items->count();
 
-        if ($this->config('paypal_use_subscriptions') && $invoice->items->map(fn ($item) => $item->reference->plan->billing_period . $item->reference->plan->billing_unit)->unique()->count() === 1) {
+        if ($this->config('paypal_use_subscriptions') && $eligableforSubscription && $invoice->items->map(fn ($item) => $item->reference->plan->billing_period . $item->reference->plan->billing_unit)->unique()->count() === 1) {
             $paypalProduct = $this->request('post', $url . '/v1/catalogs/products', [
                 'name' => $invoice->items->first()->reference->product->name,
                 'type' => 'SERVICE',
@@ -205,9 +214,9 @@ class PayPal extends Gateway
         $body = $request->json()->all();
 
         // Handle the subscription event
-        if ($body['event_type'] === 'BILLING.SUBSCRIPTION.ACTIVATED') {
+        if ($body['event_type'] === 'BILLING.SUBSCRIPTION.ACTIVATED' && isset($body['resource']['custom_id'])) {
             // Its activated so we can now add the subscription to the user (custom is the order id)
-            Order::find($body['resource']['custom_id'])->services->each(function ($service) use ($body) {
+            Order::findOrFail($body['resource']['custom_id'])->services->each(function ($service) use ($body) {
                 $service->subscription_id = $body['resource']['id'];
                 $service->save();
                 $service->properties()->updateOrCreate([
@@ -219,7 +228,7 @@ class PayPal extends Gateway
             });
 
             return response()->json(['status' => 'success']);
-        } elseif ($body['event_type'] === 'PAYMENT.SALE.COMPLETED') {
+        } elseif ($body['event_type'] === 'PAYMENT.SALE.COMPLETED' && isset($body['resource']['custom'])) {
             $order = Order::findOrFail($body['resource']['custom']);
             foreach ($order->services as $service) {
                 // Get last invoice item
