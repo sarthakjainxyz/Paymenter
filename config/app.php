@@ -21,6 +21,8 @@ return [
 
     'commit' => '',
 
+    'telemetry_enabled' => env('TELEMETRY_ENABLED', true),
+
     /*
     |--------------------------------------------------------------------------
     | Application Environment
@@ -89,19 +91,26 @@ return [
     'fallback_locale' => env('APP_FALLBACK_LOCALE', 'en'),
 
     'available_locales' => [
+        'ar' => 'Arabic',
         'de' => 'German',
         'en' => 'English',
         'es' => 'Spanish',
         'fi' => 'Finnish',
         'fr' => 'French',
+        'id' => 'Indonesian',
         'it' => 'Italian',
         'sv' => 'Swedish',
         'uk' => 'Ukrainian',
         'ko' => 'Korean',
         'lv' => 'Latvian',
+        'nl' => 'Dutch',
         'no' => 'Norwegian',
         'pt' => 'Portuguese',
         'sr' => 'Serbian',
+    ],
+
+    'rtl_locales' => [
+        'ar',
     ],
 
     'faker_locale' => env('APP_FAKER_LOCALE', 'en_US'),
@@ -147,6 +156,8 @@ return [
 
     'aliases' => Facade::defaultAliases()->merge([
         'Redis' => Illuminate\Support\Facades\Redis::class,
+        'Cart' => App\Classes\Cart::class,
+        'ExtensionHelper' => App\Helpers\ExtensionHelper::class,
     ])->toArray(),
 
     'countries' => [

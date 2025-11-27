@@ -1,7 +1,6 @@
 <?php
 
 return [
-    'view' => 'Afficher',
 
     'input' => [
         'first_name' => 'Prénom',
@@ -24,13 +23,17 @@ return [
         'address2_placeholder' => 'Votre adresse 2',
         'zip' => 'Code postal',
         'zip_placeholder' => 'Votre code postal',
-        'state' => 'État',
-        'state_placeholder' => 'Votre état',
+        'state' => 'Région',
+        'state_placeholder' => 'Votre région',
 
         'password' => 'Mot de passe',
         'password_placeholder' => 'Votre mot de passe',
+
+        'password_confirmation' => 'Confirm Password',
+        'password_confirmation_placeholder' => 'Confirm your password',
     ],
 
     'all_rights_reserved' => 'Tous droits réservés.',
-    'update' => 'Update',
+    'update' => 'Mettre à jour',
+    'save' => 'Sauvegarder',
 ];

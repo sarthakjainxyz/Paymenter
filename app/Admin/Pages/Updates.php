@@ -15,11 +15,13 @@ class Updates extends Page implements HasForms
 {
     use InteractsWithForms;
 
-    protected static ?string $navigationIcon = 'heroicon-o-document-text';
+    protected static string|\BackedEnum|null $navigationIcon = 'ri-loop-left-line';
 
-    protected static string $view = 'admin.pages.updates';
+    protected static string|\BackedEnum|null $activeNavigationIcon = 'ri-loop-left-fill';
 
-    protected static ?string $navigationGroup = 'System';
+    protected string $view = 'admin.pages.updates';
+
+    protected static string|\UnitEnum|null $navigationGroup = 'System';
 
     protected function getHeaderActions(): array
     {
@@ -35,6 +37,7 @@ class Updates extends Page implements HasForms
     public function update(): Action
     {
         return Action::make('update')
+            ->requiresConfirmation()
             ->action(function () {
                 $output = new BufferedOutput;
 
@@ -53,5 +56,10 @@ class Updates extends Page implements HasForms
                 ]);
             })
             ->label('Update');
+    }
+
+    public static function canAccess(): bool
+    {
+        return auth()->check() && auth()->user()->hasPermission('admin.updates.update');
     }
 }

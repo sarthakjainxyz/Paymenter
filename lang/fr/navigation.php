@@ -2,16 +2,17 @@
 
 return [
     'home' => 'Accueil',
-    'shop' => 'Magasin',
+    'shop' => 'Boutique',
     'cart' => 'Panier',
     'login' => 'Connexion',
     'register' => 'S\'inscrire',
     'services' => 'Services',
-    'invoices' => 'Invoices',
+    'invoices' => 'Factures',
     'account' => 'Compte',
-    'personal_details' => 'Personal Details',
-    'security' => 'Security',
+    'personal_details' => 'Informations personnelles',
+    'security' => 'Sécurité',
     'dashboard' => 'Tableau de bord',
     'tickets' => 'Tickets',
     'admin' => 'Admin',
+    'notifications' => 'Notifications',
 ];

@@ -3,17 +3,18 @@
 namespace App\Models;
 
 use App\Classes\Price;
+use App\Classes\Settings;
 use App\Models\Traits\HasProperties;
 use App\Observers\ServiceObserver;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
+use OwenIt\Auditing\Contracts\Auditable;
 
 #[ObservedBy([ServiceObserver::class])]
-class Service extends Model
+class Service extends Model implements Auditable
 {
-    use HasFactory, HasProperties;
+    use \App\Models\Traits\Auditable, HasFactory, HasProperties;
 
     public const STATUS_PENDING = 'pending';
 
@@ -35,6 +36,7 @@ class Service extends Model
         'coupon_id',
         'user_id',
         'currency_code',
+        'billing_agreement_id',
     ];
 
     protected $casts = [
@@ -111,7 +113,12 @@ class Service extends Model
         if ($this->plan->type == 'one-time' || $this->plan->type == 'free') {
             return null;
         }
-        $date = $this->expires_at ?? now();
+        if (!$this->expires_at || $this->status != self::STATUS_ACTIVE) {
+            // Make sure that if a service is being renewed after suspension or pending, we use the current date as base
+            $date = now();
+        } else {
+            $date = $this->expires_at;
+        }
 
         return $date->{'add' . ucfirst($this->plan->billing_unit) . 's'}($this->plan->billing_period);
     }
@@ -174,13 +181,17 @@ class Service extends Model
     public function upgradable(): Attribute
     {
         return Attribute::make(
-            get: fn () => $this->productUpgrades()->count() > 0 && $this->status == 'active' && !$this->upgrade?->where('status', ServiceUpgrade::STATUS_PENDING)->exists()
+            get: fn () => ($this->productUpgrades()->count() > 0 || $this->product->upgradableConfigOptions()->count() > 0) && $this->status == 'active' && $this->upgrade->where('status', ServiceUpgrade::STATUS_PENDING)->count() == 0
         );
     }
 
     public function productUpgrades()
     {
         return $this->product->upgrades->filter(function ($product) {
+            // Check stock
+            if ($product->stock !== null && ($product->stock - $this->quantity) < 0) {
+                return null;
+            }
             $plan = $product->plans()->where('billing_unit', $this->plan->billing_unit)->where('billing_period', $this->plan->billing_period)->get();
             // Only get the upgrades that have the exact same billing cycle as the service
             if ($plan->count() > 0) {
@@ -193,8 +204,43 @@ class Service extends Model
         });
     }
 
+    public function calculatePrice()
+    {
+        // Calculate the price based on the plan and config options
+        $price = $this->plan->price()->price;
+
+        $this->configs->each(function ($config) use (&$price) {
+            $configValue = $config->configValue;
+            if ($configValue) {
+                $price += $configValue->price(null, $this->plan->billing_period, $this->plan->billing_unit, $this->currency_code)->price;
+            }
+        });
+
+        // Add coupon discount if applicable
+        if ($this->coupon) {
+            $invoices = $this->invoices()->where('status', 'paid')->count() + 1;
+            // If it already used for the recurring period, do not apply the discount
+            if ($this->coupon->recurring == 0 || $invoices <= $this->coupon->recurring) {
+                $discount = $this->coupon->calculateDiscount($price);
+                $price -= $discount;
+            }
+        }
+
+        $price = (new Price([
+            'price' => $price,
+            'currency' => $this->currency,
+        ], apply_exclusive_tax: true, tax: Settings::tax($this->user)))->price;
+
+        return number_format($price, 2, '.', '');
+    }
+
     public function upgrade()
     {
-        return $this->hasOne(ServiceUpgrade::class);
+        return $this->hasMany(ServiceUpgrade::class);
+    }
+
+    public function billingAgreement()
+    {
+        return $this->belongsTo(BillingAgreement::class, 'billing_agreement_id');
     }
 }

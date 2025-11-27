@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Helpers\NotificationHelper;
 use App\Models\Setting;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
@@ -29,39 +30,58 @@ class CheckForUpdates extends Command
     {
         if (config('app.version') == 'development') {
             $this->info('You are using the development version. No update check available.');
-        } elseif (config('app.version') == 'beta') {
-            // Check if app.commit is different from the latest commit
-            $latestVersion = Http::get('https://api.github.com/repos/Paymenter/Paymenter/commits')->json();
-            // Is the last commit message 'style: linted files with pint'?
-            $latestVersion = collect($latestVersion)->firstWhere('commit.message', '!=', 'style: linted files with pint')['sha'];
+
+            return;
+        }
+
+        if (config('app.version') == 'beta') {
+            $version = Http::get('https://api.paymenter.org/version?beta')->json();
             Setting::updateOrCreate(
                 ['key' => 'latest_commit'],
-                ['value' => $latestVersion]
+                ['value' => $version['beta']]
             );
-            if (config('app.commit') != $latestVersion) {
-                $this->info('A new version is available: ' . $latestVersion);
+            if (config('app.commit') != $version['beta']) {
+                $this->info('A new version is available: ' . $version['beta']);
                 // Save as a variable to use in the UI
                 $this->info('Latest version saved to database.');
             } else {
                 $this->info('You are using the latest version: ' . config('app.commit'));
             }
         } else {
-            // Check if app.version is different from the latest version
-            $latestVersion = Http::get('https://api.github.com/repos/Paymenter/Paymenter/releases/latest')->json()['tag_name'];
-            // Remove the 'v' from the version
-            $latestVersion = str_replace('v', '', $latestVersion);
-            Setting::updateOrCreate(
-                ['key' => 'latest_version'],
-                ['value' => $latestVersion]
-            );
-            if (config('app.version') != $latestVersion) {
-                $this->info('A new version is available: ' . $latestVersion);
+            $version = Http::get('https://api.paymenter.org/version')->json();
+
+            if (config('app.version') != $version['latest']) {
+                $this->info('A new version is available: ' . $version['latest']);
                 // Save as a variable to use in the UI
                 $this->info('Latest version saved to database.');
             } else {
                 $this->info('You are using the latest version: ' . config('app.version'));
             }
         }
+
+        $setting = Setting::where('key', 'latest_version')->first();
+        $currentVersion = config('app.version');
+
+        if ($setting && $setting->value != $version['latest'] && $currentVersion != $version['latest']) {
+            // Send notification to all admins
+            $this->info('New stable version detected, sending notification to system email address.');
+
+            // Send notification to all admins
+            NotificationHelper::sendSystemEmailNotification(
+                'New stable version available',
+                <<<HTML
+                A new stable version of Paymenter is available: {$version['latest']}.<br>
+                You are currently using version: {$currentVersion}.<br>
+                
+                Please update as soon as possible.
+                HTML
+            );
+        }
+        Setting::updateOrCreate(
+            ['key' => 'latest_version'],
+            ['value' => $version['latest']]
+        );
+
         $this->info('Update check completed.');
     }
 }

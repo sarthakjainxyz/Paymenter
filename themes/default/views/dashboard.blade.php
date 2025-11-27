@@ -1,4 +1,4 @@
-<div>
+<div class="container mt-14">
     <x-navigation.breadcrumb />
     <p class="text-base text-base/60 font mt-2 mb-8">
         {{ __('dashboard.dashboard_description') }}
@@ -31,6 +31,7 @@
             </div>
 
             <!-- Open Tickets -->
+            @if(!config('settings.tickets_disabled', false))
             <div class="">
                 <div class="flex items-center justify-between mb-6">
                     <div class="flex items-center gap-3">
@@ -51,11 +52,12 @@
                     <livewire:tickets.widget />
                 </div>
                 <x-navigation.link class="bg-background-secondary hover:bg-background-secondary/80 border border-neutral flex items-center justify-center rounded-lg"
-                    :href="route('services')">
+                    :href="route('tickets')">
                     {{ __('dashboard.view_all') }}
                     <x-ri-arrow-right-fill class="size-5 h-5" />
                 </x-navigation.link>
             </div>
+            @endif
         </div>
 
         <div class="grid gap-8 items-start">

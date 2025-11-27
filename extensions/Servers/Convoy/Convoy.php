@@ -5,6 +5,7 @@ namespace Paymenter\Extensions\Servers\Convoy;
 use App\Classes\Extension\Server;
 use App\Models\Product;
 use App\Models\Service;
+use Exception;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
@@ -20,7 +21,7 @@ class Convoy extends Server
         ])->$method($req_url, $data);
 
         if (!$response->successful()) {
-            throw new \Exception($response->json()['message']);
+            throw new Exception($response->json()['message']);
         }
 
         return $response->json() ?? [];
@@ -162,6 +163,7 @@ class Convoy extends Server
                 'label' => 'Hostname',
                 'placeholder' => 'server.example.com',
                 'required' => true,
+                'validation' => 'required|string|max:40',
             ],
         ];
     }
@@ -175,7 +177,7 @@ class Convoy extends Server
             $this->request('servers');
 
             return true;
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             return $e->getMessage();
         }
 
@@ -186,7 +188,7 @@ class Convoy extends Server
     private function createPassword()
     {
         $password = Str::password();
-        while (!preg_match('/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,50}$/', $password)) {
+        while (!preg_match('/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#\$%\^&\*]).{8,50}$/', $password)) {
             $password = Str::password();
         }
 
@@ -251,7 +253,7 @@ class Convoy extends Server
             $ips = array_merge($ips, array_column($ip['data'], 'id'));
         }
 
-        $user = $this->getOrCreateUser($service->order->user);
+        $user = $this->getOrCreateUser($service->user);
 
         $data = [
             'node_id' => (int) $node,
@@ -265,19 +267,19 @@ class Convoy extends Server
                 'disk' => $disk * 1024 * 1024,
                 'snapshots' => (int) $snapshot,
                 'bandwidth' => (int) $bandwidth == 0 ? null : (int) $bandwidth * 1024 * 1024,
-                'backups' => (int) $backups == 0 ? null : (int) $backups,
+                'backups' => (int) $backups,
                 'address_ids' => $ips,
             ],
             'account_password' => $password,
             'template_uuid' => $os,
             'should_create_server' => true,
-            'start_on_completion' => false,
+            'start_on_completion' => isset($properties['start_on_create']) ? (bool) $properties['start_on_create'] : (bool) $settings['start_on_create'],
         ];
 
         $server = $this->request('servers', 'post', $data);
 
         if (!isset($server['data'])) {
-            throw new \Exception('Failed to create server');
+            throw new Exception('Failed to create server');
         }
 
         $service->properties()->updateOrCreate([
@@ -294,6 +296,53 @@ class Convoy extends Server
         ];
     }
 
+    public function upgradeServer(Service $service, $settings, $properties)
+    {
+        if (!isset($properties['server_uuid'])) {
+            throw new Exception('Server does not exist');
+        }
+
+        $currentData = $this->request('servers/' . $properties['server_uuid']);
+
+        $data = [
+            'address_ids' => [],
+            'snapshot_limit' => (int) ($properties['snapshot'] ?? $settings['snapshot']),
+            'backup_limit' => (int) ($properties['backups'] ?? $settings['backups']),
+            'bandwidth_limit' => (int) ($properties['bandwidth'] ?? $settings['bandwidth']) * 1024 * 1024,
+            'cpu' => (int) ($properties['cpu'] ?? $settings['cpu']),
+            'memory' => (int) ($properties['ram'] ?? $settings['ram']) * 1024 * 1024,
+            'disk' => (int) ($properties['disk'] ?? $settings['disk']) * 1024 * 1024,
+        ];
+
+        $limitIpv4 = (int) ($properties['ipv4'] ?? $settings['ipv4']);
+        $limitIpv6 = (int) ($properties['ipv6'] ?? $settings['ipv6']);
+        // Check if IPv4 has increased
+        if ($limitIpv4 && $limitIpv4 > count($currentData['data']['limits']['addresses']['ipv4'])) {
+            $ip = $this->request('nodes/' . $currentData['data']['node_id'] . '/addresses', data: ['filter[server_id]' => '', 'filter[type]' => 'ipv4', 'per_page' => $limitIpv4 - count($currentData['data']['limits']['addresses']['ipv4'])]);
+            $data['address_ids'] = array_merge(array_column($currentData['data']['limits']['addresses']['ipv4'], 'id'), array_column($ip['data'], 'id'));
+        } else {
+            $data['address_ids'] = array_column($currentData['data']['limits']['addresses']['ipv4'], 'id');
+        }
+        // Check if IPv6 has increased
+        if ($limitIpv6 && $limitIpv6 > count($currentData['data']['limits']['addresses']['ipv6'])) {
+            $ip = $this->request('nodes/' . $currentData['data']['node_id'] . '/addresses', data: ['filter[server_id]' => '', 'filter[type]' => 'ipv6', 'per_page' => $limitIpv6 - count($currentData['data']['limits']['addresses']['ipv6'])]);
+            $data['address_ids'] = array_merge($data['address_ids'], array_column($ip['data'], 'id'));
+        } else {
+            $data['address_ids'] = array_merge($data['address_ids'], array_column($currentData['data']['limits']['addresses']['ipv6'], 'id'));
+        }
+        $data['address_ids'] = array_values(array_unique($data['address_ids']));
+
+        // Update server
+        $server = $this->request('servers/' . $properties['server_uuid'] . '/settings/build', 'patch', $data);
+        if (!isset($server['data'])) {
+            throw new Exception('Failed to update server');
+        }
+
+        return [
+            'server' => $server['data'],
+        ];
+    }
+
     /**
      * Suspend a server
      *
@@ -304,7 +353,7 @@ class Convoy extends Server
     public function suspendServer(Service $service, $settings, $properties)
     {
         if (!isset($properties['server_uuid'])) {
-            throw new \Exception('Server does not exist');
+            throw new Exception('Server does not exist');
         }
 
         $this->request('servers/' . $properties['server_uuid'] . '/settings/suspend', 'post');
@@ -320,7 +369,7 @@ class Convoy extends Server
     public function unsuspendServer(Service $service, $settings, $properties)
     {
         if (!isset($properties['server_uuid'])) {
-            throw new \Exception('Server does not exist');
+            throw new Exception('Server does not exist');
         }
 
         $this->request('servers/' . $properties['server_uuid'] . '/settings/unsuspend', 'post');
@@ -336,7 +385,7 @@ class Convoy extends Server
     public function terminateServer(Service $service, $settings, $properties)
     {
         if (!isset($properties['server_uuid'])) {
-            throw new \Exception('Server does not exist');
+            throw new Exception('Server does not exist');
         }
 
         $this->request('servers/' . $properties['server_uuid'], 'delete');
@@ -358,7 +407,7 @@ class Convoy extends Server
 
     public function ssoLink(Service $service): string
     {
-        $data = $this->request('users/' . $this->getOrCreateUser($service->order->user)['id'] . '/generate-sso-token', 'post');
+        $data = $this->request('users/' . $this->getOrCreateUser($service->user)['id'] . '/generate-sso-token', 'post');
 
         return rtrim($this->config('host'), '/') . '/authenticate?token=' . $data['data']['token'];
     }
