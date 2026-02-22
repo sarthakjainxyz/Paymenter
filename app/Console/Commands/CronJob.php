@@ -143,10 +143,16 @@ class CronJob extends Command
                 ServiceUpgrade::where('status', 'pending')->get()->each(function ($upgrade) use (&$number) {
                     if ($upgrade->service->expires_at < now()) {
                         $upgrade->update(['status' => 'cancelled']);
-                        $upgrade->invoice->update(['status' => 'cancelled']);
+                        // Somehow people manage to have an upgrade without an invoice
+                        if ($upgrade->invoice) {
+                            $upgrade->invoice->update(['status' => 'cancelled']);
+                        }
 
                         $number++;
 
+                        return;
+                    }
+                    if (!$upgrade->invoice) {
                         return;
                     }
 
@@ -238,6 +244,9 @@ class CronJob extends Command
         ]);
 
         $this->info('Successfully charged ' . $this->successFullCharges . ' invoices.');
+
+        // Remove old debug logs
+        \App\Models\DebugLog::where('created_at', '<', now()->subDays(30))->delete();
 
         // Check for updates
         $this->info('Checking for updates...');

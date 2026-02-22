@@ -3,7 +3,7 @@
 namespace App\Livewire\Client;
 
 use App\Livewire\Component;
-use App\Models\Session;
+use App\Models\UserSession;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Livewire\Attributes\Locked;
@@ -53,6 +53,9 @@ class Security extends Component
             'password' => Hash::make($this->password),
         ]);
 
+        // Destroy all other sessions
+        Auth::user()->sessions()->where('ulid', '!=', \Illuminate\Support\Facades\Session::get('user_session'))->delete();
+
         $this->notify(__('account.notifications.password_changed'));
 
         $this->reset('current_password', 'password', 'password_confirmation');
@@ -77,9 +80,7 @@ class Security extends Component
                 $this->showEnableTwoFactor = false;
 
                 // Destroy all other sessions
-                Session::where('user_id', Auth::id())
-                    ->where('id', '!=', session()->getId())
-                    ->delete();
+                Auth::user()->sessions()->where('ulid', '!=', \Illuminate\Support\Facades\Session::get('user_session'))->delete();
             } else {
                 $this->notify(__('account.notifications.two_factor_code_incorrect'), 'error');
             }
@@ -106,8 +107,14 @@ class Security extends Component
         $this->twoFactorEnabled = false;
     }
 
-    public function logoutSession(Session $session)
+    public function logoutSession(UserSession $session)
     {
+        if ($session->user_id !== Auth::id()) {
+            $this->notify(__('Unauthorized'), 'error');
+
+            return;
+        }
+
         $session->delete();
 
         $this->notify(__('account.notifications.session_logged_out'));
